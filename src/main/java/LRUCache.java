@@ -1,15 +1,28 @@
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
-public class LRUCache{
+/**
+ * A thread-safe, generic Least Recently Used (LRU) cache implementation.
+ * It uses a ConcurrentHashMap for thread-safe key-value lookups and a
+ * ReentrantLock to protect the ordering logic (the doubly linked list).
+ *
+ * @param <K> the type of keys maintained by this cache
+ * @param <V> the type of mapped values
+ */
+public class LRUCache<K,V> { //Generic
 
-    public class DoublyLinkedNode {
-        int key;
-        int value;
+    /**
+     * Inner class for the nodes of the doubly linked list.
+     * It's static to prevent it from holding an implicit reference to the outer LRUCache instance.
+     */
+    private static class DoublyLinkedNode<K,V> { //Generic
+        K key; //Generic
+        V value; //Generic
         DoublyLinkedNode prev;
         DoublyLinkedNode next;
 
-        public DoublyLinkedNode(int key, int val) {
+        public DoublyLinkedNode(K key, V val) { //Generic
             this.key = key;
             this.value = val;
         }
@@ -18,61 +31,112 @@ public class LRUCache{
 
     private final int capacity;
     private int size;
-    private final Map<Integer, DoublyLinkedNode> map;
-    DoublyLinkedNode head;
-    DoublyLinkedNode tail;
+    // Use ConcurrentHashMap for its high-performance, thread-safe operations.
+    private final Map<K, DoublyLinkedNode<K,V>> map; //Generic
+    // A single lock to protect all modifications to the linked list structure.
+    private final ReentrantLock lock;
+    // Sentinel nodes to make list operations simpler (avoiding null checks).
+    private final DoublyLinkedNode head;
+    private final DoublyLinkedNode tail;
+
 
     public LRUCache(int capacity) {
+        if (capacity <= 0) { // edge case
+            throw new IllegalArgumentException("Capacity must be positive");
+        }
         this.capacity = capacity;
         this.size = 0;
-        map = new HashMap<>();
-        head = new DoublyLinkedNode(0,0);
-        tail = new DoublyLinkedNode(0,0);
+        this.map = new ConcurrentHashMap<>();
+        this.lock = new ReentrantLock();
+        // Initialize sentinel nodes with nulls, as they don't store real data.
+        this.head = new DoublyLinkedNode(null, null);
+        this.tail = new DoublyLinkedNode(null, null);
         head.next = tail;
         tail.prev = head;
     }
 
-    public int get(int key) {
+    /**
+     * Retrieves the value for a given key. Returns null if the key is not found.
+     * This operation moves the accessed element to the front (most recently used).
+     *
+     * @param key the key whose associated value is to be returned
+     * @return the value to which the specified key is mapped, or null if this cache contains no mapping for the key
+     */
+    public V get(K key) {
+        // First, perform a non-blocking check for performance.
         if (!map.containsKey(key)) {
-            return -1;
+            return null; // For generic types, null is the standard "not found" return value.
         }
-        DoublyLinkedNode node = map.get(key);
-        moveToHead(node);
-        return node.value;
-    }
-
-    public void put(int key, int val) {
-        if (map.containsKey(key)) {
-            DoublyLinkedNode node = map.get(key);
-            node.value = val;
-            moveToHead(node);
-        } else {
-            DoublyLinkedNode newNode = new DoublyLinkedNode(key, val);
-            map.put(key, newNode);
-            addToHead(newNode);
-            size++;
-            if (size > capacity) {
-                DoublyLinkedNode node = removeFromTail();
-                map.remove(node.key);
-                size--;
+        lock.lock();
+        try {
+            //Re-check if key is removed while getting the lock
+            if (!map.containsKey(key)) {
+                return null;
             }
+            DoublyLinkedNode<K,V> node = map.get(key); //cast to <K,V>
+            moveToHead(node); //lock protects this modification
+            return node.value;
+        } finally {
+            lock.unlock();
         }
     }
 
-    private void moveToHead(DoublyLinkedNode node) {
+    /**
+     * Inserts or updates a key-value pair. If inserting a new key causes the cache
+     * to exceed its capacity, the least recently used element is evicted.
+     *
+     * @param key   the key with which the specified value is to be associated
+     * @param val the value to be associated with the specified key
+     */
+    public void put(K key, V val) { //Generic
+        lock.lock();
+        try {
+            if (map.containsKey(key)) {
+                DoublyLinkedNode<K,V> node = map.get(key);
+                node.value = val;
+                moveToHead(node); //lock protects this modification
+            } else {
+                DoublyLinkedNode<K,V> newNode = new DoublyLinkedNode(key, val);
+                map.put(key, newNode);
+                addToHead(newNode); //lock protects this modification
+                size++;
+                if (size > capacity) {
+                    DoublyLinkedNode<K,V> node = removeFromTail(); //lock protects this modification
+                    map.remove(node.key);
+                    size--;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Moves an existing node to the head of the list.
+     * This must be called only when the lock is held.
+     */
+    private void moveToHead(DoublyLinkedNode<K,V> node) {
         node.prev.next = node.next;
         node.next.prev = node.prev;
         addToHead(node);
     }
 
-    private DoublyLinkedNode removeFromTail() { // 2 pointers of to be removed node ignored
-        DoublyLinkedNode rem = tail.prev;
+    /**
+     * Removes the node at the tail of the list.
+     * This must be called only when the lock is held.
+     */
+    private DoublyLinkedNode<K, V> removeFromTail() { // 2 pointers of to be removed node ignored
+        DoublyLinkedNode<K, V> rem = tail.prev;
         tail.prev = rem.prev;
         rem.prev.next = tail;
         return rem;
     }
 
-    private void addToHead(DoublyLinkedNode node) { // 4 operations for 4 pointers
+    /**
+     * Adds a new node to the head of the list.
+     * This must be called only when the lock is held.
+     */
+    private void addToHead(DoublyLinkedNode<K, V> node) { // 4 operations for 4 pointers
         node.next = head.next;
         node.prev = head;
         node.next.prev = node;
@@ -80,7 +144,38 @@ public class LRUCache{
     }
 
     public static void main(String args[]) {
-        LRUCache lRUCache = new LRUCache(2);
+        numbers();
+        fruits();
+    }
+
+    private static void fruits() {
+        // Use Parameterized type for Generic classes, avoid Raw use to avoid unchecked compiler warnings, Runtime error: ClassCastException
+        LRUCache<Integer, String> lruCache = new LRUCache<>(2);
+        System.out.println("Cache created with capacity 2.");
+
+        lruCache.put(1, "Apple");
+        System.out.println("put(1, \"Apple\")");
+        lruCache.put(2, "Banana");
+        System.out.println("put(2, \"Banana\")");
+
+        System.out.println("get(1): " + lruCache.get(1)); // returns "Apple", moves 1 to front
+
+        lruCache.put(3, "Cherry"); // Evicts key 2 (Banana)
+        System.out.println("put(3, \"Cherry\") -> Evicts key 2");
+
+        System.out.println("get(2): " + lruCache.get(2)); // returns null (not found)
+
+        lruCache.put(4, "Date"); // Evicts key 1 (Apple)
+        System.out.println("put(4, \"Date\") -> Evicts key 1");
+
+        System.out.println("get(1): " + lruCache.get(1)); // returns null (not found)
+        System.out.println("get(3): " + lruCache.get(3)); // returns "Cherry"
+        System.out.println("get(4): " + lruCache.get(4)); // returns "Date"
+    }
+
+    private static void numbers() {
+        // Use Parameterized type for Generic classes, avoid Raw use to avoid unchecked compiler warnings, Runtime error: ClassCastException
+        LRUCache<Integer, Integer> lRUCache = new LRUCache<>(2);
         lRUCache.put(1, 1); // cache is {1=1}
         lRUCache.put(2, 2); // cache is {1=1, 2=2}
         lRUCache.get(1);    // return 1
