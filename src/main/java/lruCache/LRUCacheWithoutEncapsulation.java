@@ -1,3 +1,5 @@
+package lruCache;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -10,11 +12,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <K> the type of keys maintained by this cache
  * @param <V> the type of mapped values
  */
-public class LRUCache<K,V> { //Generic
+public class LRUCacheWithoutEncapsulation<K,V> implements LRUCacheInterface<K, V> { //Generic
 
     /**
      * Inner class for the nodes of the doubly linked list.
-     * It's static to prevent it from holding an implicit reference to the outer LRUCache instance.
+     * It's static to prevent it from holding an implicit reference to the outer lruCache.LRUCache instance.
      */
     private static class DoublyLinkedNode<K,V> { //Generic
         K key; //Generic
@@ -40,7 +42,7 @@ public class LRUCache<K,V> { //Generic
     private final DoublyLinkedNode tail;
 
 
-    public LRUCache(int capacity) {
+    public LRUCacheWithoutEncapsulation(int capacity) {
         if (capacity <= 0) { // edge case
             throw new IllegalArgumentException("Capacity must be positive");
         }
@@ -150,7 +152,7 @@ public class LRUCache<K,V> { //Generic
 
     private static void fruits() {
         // Use Parameterized type for Generic classes, avoid Raw use to avoid unchecked compiler warnings, Runtime error: ClassCastException
-        LRUCache<Integer, String> lruCache = new LRUCache<>(2);
+        LRUCacheWithoutEncapsulation<Integer, String> lruCache = new LRUCacheWithoutEncapsulation<>(2);
         System.out.println("Cache created with capacity 2.");
 
         lruCache.put(1, "Apple");
@@ -175,7 +177,7 @@ public class LRUCache<K,V> { //Generic
 
     private static void numbers() {
         // Use Parameterized type for Generic classes, avoid Raw use to avoid unchecked compiler warnings, Runtime error: ClassCastException
-        LRUCache<Integer, Integer> lRUCache = new LRUCache<>(2);
+        LRUCacheWithoutEncapsulation<Integer, Integer> lRUCache = new LRUCacheWithoutEncapsulation<>(2);
         lRUCache.put(1, 1); // cache is {1=1}
         lRUCache.put(2, 2); // cache is {1=1, 2=2}
         lRUCache.get(1);    // return 1
