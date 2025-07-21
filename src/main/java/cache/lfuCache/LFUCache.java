@@ -1,4 +1,6 @@
-package lruCache;
+package cache.lfuCache;
+
+import cache.CacheInterface;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,7 +16,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <K> the type of keys maintained by this cache
  * @param <V> the type of mapped values
  */
-public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
+public class LFUCache<K,V> implements CacheInterface<K, V> { //Generic
 
     /**
      * Inner class for the nodes of the doubly linked list.
@@ -25,10 +27,12 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
         V value; //Generic
         Node<K,V> prev;
         Node<K,V> next;
+        int freq; // For LFU cache
 
         public Node(K key, V val) { //Generic
             this.key = key;
             this.value = val;
+            this.freq = 1; //  Default frequency of new node
         }
     }
 
@@ -40,6 +44,7 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
     private static class DoublyLinkedList<K,V> { //Generic
         private final Node<K,V> head;
         private final Node<K,V> tail;
+        private int size;
 
         //Initilize sentinel nodes with nulls, as they don't store real data.
         DoublyLinkedList() { //Generic
@@ -47,6 +52,7 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
             this.tail = new Node<>(null, null);
             head.next = tail;
             tail.prev = head;
+            this.size = 0;
         }
 
         /**
@@ -56,17 +62,18 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
         private void remove(Node<K,V> node) {
             node.prev.next = node.next;
             node.next.prev = node.prev;
+            size--;
         }
 
         /**
          * Removes the node at the tail of the list.
          * This must be called only when the lock is held.
          */
-        private Node<K, V> removeLast() { // 2 pointers of to be removed node ignored
-            Node<K, V> rem = tail.prev;
-            tail.prev = rem.prev;
-            rem.prev.next = tail;
-            return rem;
+        private Node<K, V> removeLast() {
+            if (size == 0) return null;
+            Node<K, V> nodeToRemove = tail.prev;
+            remove(nodeToRemove);
+            return nodeToRemove;
         }
 
         /**
@@ -78,27 +85,30 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
             node.prev = head;
             node.next.prev = node;
             head.next = node;
+            size++;
         }
     }
 
     private final int capacity;
     private int size;
-    private final DoublyLinkedList<K,V> dlist;
+    private final Map<Integer, DoublyLinkedList<K,V>> freqMap;
     // Use ConcurrentHashMap for its high-performance, thread-safe operations.
-    private final Map<K, Node<K,V>> map; //Generic
+    private final Map<K, Node<K,V>> nodeMap; //Generic
     // A single lock to protect all modifications to the linked list structure.
     private final ReentrantLock lock;
+    private int minFreq;
 
 
-    public LRUCache(int capacity) {
+    public LFUCache(int capacity) {
         if (capacity <= 0) { // edge case
             throw new IllegalArgumentException("Capacity must be positive");
         }
         this.capacity = capacity;
         this.size = 0;
-        this.dlist = new DoublyLinkedList<>();
-        this.map = new ConcurrentHashMap<>();
+        this.freqMap = new ConcurrentHashMap<>();
+        this.nodeMap = new ConcurrentHashMap<>();
         this.lock = new ReentrantLock();
+        this.minFreq = 0;
 
     }
 
@@ -111,18 +121,17 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
      */
     public V get(K key) {
         // First, perform a non-blocking check for performance.
-        if (!map.containsKey(key)) {
+        if (!nodeMap.containsKey(key)) {
             return null; // For generic types, null is the standard "not found" return value.
         }
         lock.lock();
         try {
             //Re-check if key is removed while getting the lock
-            if (!map.containsKey(key)) {
+            if (!nodeMap.containsKey(key)) {
                 return null;
             }
-            Node<K,V> node = map.get(key); //cast to <K,V>
-            dlist.remove(node); //lock protects this modification
-            dlist.addFirst(node);
+            Node<K,V> node = nodeMap.get(key); //cast to <K,V>
+            updateNodeFrequency(node);
             return node.value;
         } finally {
             lock.unlock();
@@ -139,26 +148,41 @@ public class LRUCache<K,V> implements LRUCacheInterface<K, V> { //Generic
     public void put(K key, V val) { //Generic
         lock.lock();
         try {
-            if (map.containsKey(key)) {
-                Node<K,V> node = map.get(key);
+            if (nodeMap.containsKey(key)) {
+                Node<K,V> node = nodeMap.get(key);
                 if (node.value != val) {
                     node.value = val;
                 }
-                dlist.remove(node); //lock protects this modification
-                dlist.addFirst(node);
+                updateNodeFrequency(node);
             } else {
-                Node<K,V> newNode = new Node(key, val);
-                map.put(key, newNode);
-                dlist.addFirst(newNode); //lock protects this modification
-                size++;
-                if (size > capacity) {
-                    Node<K,V> node = dlist.removeLast(); //lock protects this modification
-                    map.remove(node.key);
-                    size--;
+                if (nodeMap.size() >= capacity) {
+                    DoublyLinkedList<K,V> dlist = freqMap.get(minFreq);
+                    Node<K, V> removedNode = dlist.removeLast();
+                    nodeMap.remove(removedNode.key);
                 }
+                Node<K,V> newNode = new Node(key, val);
+                nodeMap.put(key, newNode);
+                this.minFreq = 1; // as new node has frequency 1
+                freqMap.computeIfAbsent(minFreq, k -> new DoublyLinkedList<>());
+                freqMap.get(minFreq).addFirst(newNode);
             }
         } finally {
             lock.unlock();
         }
+    }
+
+    private void updateNodeFrequency(Node<K,V> node) {
+        int oldFreq = node.freq;
+        DoublyLinkedList<K, V> oldList = freqMap.get(oldFreq);
+        oldList.remove(node);
+
+        // If the old list is now empty, and it was the minimum frequency, update minimum frequency
+        if (oldFreq == minFreq && oldList.size == 0) {
+            minFreq++;
+        }
+
+        node.freq++;
+        DoublyLinkedList<K, V> newList = freqMap.computeIfAbsent(node.freq, k-> new DoublyLinkedList<>());
+        newList.addFirst(node);
     }
 }

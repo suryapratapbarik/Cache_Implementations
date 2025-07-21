@@ -1,4 +1,6 @@
-package lruCache;
+package cache.lruCache;
+
+import cache.CacheInterface;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,13 +14,13 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <K> the type of keys maintained by this cache
  * @param <V> the type of mapped values
  */
-public class LRUCacheWithoutEncapsulation<K,V> implements LRUCacheInterface<K, V> { //Generic
+public class LRUCacheWithoutEncapsulation<K, V> implements CacheInterface<K, V> { //Generic
 
     /**
      * Inner class for the nodes of the doubly linked list.
      * It's static to prevent it from holding an implicit reference to the outer lruCache.LRUCache instance.
      */
-    private static class DoublyLinkedNode<K,V> { //Generic
+    private static class DoublyLinkedNode<K, V> { //Generic
         K key; //Generic
         V value; //Generic
         DoublyLinkedNode prev;
@@ -34,7 +36,7 @@ public class LRUCacheWithoutEncapsulation<K,V> implements LRUCacheInterface<K, V
     private final int capacity;
     private int size;
     // Use ConcurrentHashMap for its high-performance, thread-safe operations.
-    private final Map<K, DoublyLinkedNode<K,V>> map; //Generic
+    private final Map<K, DoublyLinkedNode<K, V>> map; //Generic
     // A single lock to protect all modifications to the linked list structure.
     private final ReentrantLock lock;
     // Sentinel nodes to make list operations simpler (avoiding null checks).
@@ -75,7 +77,7 @@ public class LRUCacheWithoutEncapsulation<K,V> implements LRUCacheInterface<K, V
             if (!map.containsKey(key)) {
                 return null;
             }
-            DoublyLinkedNode<K,V> node = map.get(key); //cast to <K,V>
+            DoublyLinkedNode<K, V> node = map.get(key); //cast to <K,V>
             moveToHead(node); //lock protects this modification
             return node.value;
         } finally {
@@ -87,23 +89,23 @@ public class LRUCacheWithoutEncapsulation<K,V> implements LRUCacheInterface<K, V
      * Inserts or updates a key-value pair. If inserting a new key causes the cache
      * to exceed its capacity, the least recently used element is evicted.
      *
-     * @param key   the key with which the specified value is to be associated
+     * @param key the key with which the specified value is to be associated
      * @param val the value to be associated with the specified key
      */
     public void put(K key, V val) { //Generic
         lock.lock();
         try {
             if (map.containsKey(key)) {
-                DoublyLinkedNode<K,V> node = map.get(key);
+                DoublyLinkedNode<K, V> node = map.get(key);
                 node.value = val;
                 moveToHead(node); //lock protects this modification
             } else {
-                DoublyLinkedNode<K,V> newNode = new DoublyLinkedNode(key, val);
+                DoublyLinkedNode<K, V> newNode = new DoublyLinkedNode(key, val);
                 map.put(key, newNode);
                 addToHead(newNode); //lock protects this modification
                 size++;
                 if (size > capacity) {
-                    DoublyLinkedNode<K,V> node = removeFromTail(); //lock protects this modification
+                    DoublyLinkedNode<K, V> node = removeFromTail(); //lock protects this modification
                     map.remove(node.key);
                     size--;
                 }
@@ -117,7 +119,7 @@ public class LRUCacheWithoutEncapsulation<K,V> implements LRUCacheInterface<K, V
      * Moves an existing node to the head of the list.
      * This must be called only when the lock is held.
      */
-    private void moveToHead(DoublyLinkedNode<K,V> node) {
+    private void moveToHead(DoublyLinkedNode<K, V> node) {
         node.prev.next = node.next;
         node.next.prev = node.prev;
         addToHead(node);

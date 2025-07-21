@@ -1,4 +1,4 @@
-package lruCache;
+package cache.lruCache;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

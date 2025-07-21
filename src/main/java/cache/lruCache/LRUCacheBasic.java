@@ -1,9 +1,9 @@
-package lruCache;
+package cache.lruCache;
 
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
-public class LRUCacheThreadSafeSimple {
+public class LRUCacheBasic {
 
     private class DoublyLinkedNode {
         int key;
@@ -24,18 +24,17 @@ public class LRUCacheThreadSafeSimple {
     private final DoublyLinkedNode head;
     private final DoublyLinkedNode tail;
 
-
-    public LRUCacheThreadSafeSimple(int capacity) {
+    public LRUCacheBasic(int capacity) {
         this.capacity = capacity;
         this.size = 0;
-        this.map = new ConcurrentHashMap<>();
+        this.map = new HashMap<>();
         this.head = new DoublyLinkedNode(0,0);
         this.tail = new DoublyLinkedNode(0,0);
         head.next = tail;
         tail.prev = head;
     }
 
-    synchronized public int get(int key) {
+    public int get(int key) {
         if (!map.containsKey(key)) {
             return -1;
         }
@@ -44,7 +43,7 @@ public class LRUCacheThreadSafeSimple {
         return node.value;
     }
 
-    synchronized public void put(int key, int val) {
+    public void put(int key, int val) {
         if (map.containsKey(key)) {
             DoublyLinkedNode node = map.get(key);
             node.value = val;
@@ -83,15 +82,15 @@ public class LRUCacheThreadSafeSimple {
     }
 
     public static void main(String args[]) {
-        LRUCacheThreadSafeSimple lRUCache = new LRUCacheThreadSafeSimple(2);
-        lRUCache.put(1, 1); // cache is {1=1}
-        lRUCache.put(2, 2); // cache is {1=1, 2=2}
-        lRUCache.get(1);    // return 1
-        lRUCache.put(3, 3); // LRU key was 2, evicts key 2, cache is {1=1, 3=3}
-        lRUCache.get(2);    // returns -1 (not found)
-        lRUCache.put(4, 4); // LRU key was 1, evicts key 1, cache is {4=4, 3=3}
-        lRUCache.get(1);    // return -1 (not found)
-        lRUCache.get(3);    // return 3
-        lRUCache.get(4);    // return 4
+        LRUCacheBasic lRUCacheBasic = new LRUCacheBasic(2);
+        lRUCacheBasic.put(1, 1); // cache is {1=1}
+        lRUCacheBasic.put(2, 2); // cache is {1=1, 2=2}
+        lRUCacheBasic.get(1);    // return 1
+        lRUCacheBasic.put(3, 3); // LRU key was 2, evicts key 2, cache is {1=1, 3=3}
+        lRUCacheBasic.get(2);    // returns -1 (not found)
+        lRUCacheBasic.put(4, 4); // LRU key was 1, evicts key 1, cache is {4=4, 3=3}
+        lRUCacheBasic.get(1);    // return -1 (not found)
+        lRUCacheBasic.get(3);    // return 3
+        lRUCacheBasic.get(4);    // return 4
     }
 }
