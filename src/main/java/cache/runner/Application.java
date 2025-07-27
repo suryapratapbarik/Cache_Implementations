@@ -1,22 +1,22 @@
 package cache.runner;
 
 import cache.lfuCache.LFUCache;
-import lruCache.LRUCache;
+import cache.lruCache.LRUCacheElastic;
 import cache.CacheInterface;
 
 public class Application {
-    public static void main(String args[]) {
+    public static void main(String args[]) throws InterruptedException {
+
+        //LFU
+        //fruits(new LFUCache<>(2));
+        //numbers(new LFUCache<>(2));
 
         //LRU
-        fruits(new LFUCache<>(2));
-        numbers(new LFUCache<>(2));
-
-        //LRU
-        fruits(new LRUCache<>(2));
-        numbers(new LRUCache<>(2));
+        fruits(new LRUCacheElastic<>(2, 5));
+        numbers(new LRUCacheElastic<>(2, 5));
     }
 
-    private static void fruits(CacheInterface<Integer, String> cache) {
+    private static void fruits(CacheInterface<Integer, String> cache) throws InterruptedException {
         // Use Parameterized type for Generic classes, avoid Raw use to avoid unchecked compiler warnings, Runtime error: ClassCastException
         //CacheInterface<Integer, String> lruCache = new LRUCache<>(2);
         System.out.println("Cache created with capacity 2.");
@@ -25,6 +25,7 @@ public class Application {
         System.out.println("put(1, \"Apple\")");
         cache.put(2, "Banana");
         System.out.println("put(2, \"Banana\")");
+        Thread.sleep(5000);
 
         System.out.println("get(1): " + cache.get(1)); // returns "Apple", moves 1 to front
 
